@@ -1,3 +1,8 @@
 <Solution>
-  <Project Path="MicroNamaa/MicroNamaa.csproj" />
+  <Folder Name="/src/">
+    <Project Path="src/MicroNamaa.Domain/MicroNamaa.Domain.csproj" />
+    <Project Path="src/MicroNamaa.Application/MicroNamaa.Application.csproj" />
+    <Project Path="src/MicroNamaa.Infrastructure/MicroNamaa.Infrastructure.csproj" />
+    <Project Path="src/MicroNamaa.Api/MicroNamaa.Api.csproj" />
+  </Folder>
 </Solution>

@@ -1,0 +1,20 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace MicroNamaa.Application.DTOs.Staff;
+
+public record CreateStaffRequest
+{
+    [Required, MaxLength(150)]
+    public string FullName { get; init; } = string.Empty;
+
+    [Required, EmailAddress, MaxLength(256)]
+    public string Email { get; init; } = string.Empty;
+
+    [MaxLength(20)]
+    public string? Phone { get; init; }
+
+    [Required, MinLength(8), MaxLength(100)]
+    public string Password { get; init; } = string.Empty;
+
+    public IReadOnlyList<StaffPermissionDto> Permissions { get; init; } = [];
+}

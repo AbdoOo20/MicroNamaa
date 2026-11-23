@@ -43,6 +43,11 @@ public class UnitOfWork(AppDbContext context) : IUnitOfWork, IAsyncDisposable, I
         await DisposeTransactionAsync();
     }
 
+    public void ClearChanges()
+    {
+        context.ChangeTracker.Clear();
+    }
+
     public async Task RollbackTransactionAsync(CancellationToken cancellationToken = default)
     {
         if (transaction is null)

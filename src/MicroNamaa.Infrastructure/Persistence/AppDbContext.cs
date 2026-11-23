@@ -74,6 +74,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, IUserAppServic
 
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
 
+    public DbSet<SyncOperation> SyncOperations => Set<SyncOperation>();
+
     public DbSet<StaffPermission> StaffPermissions => Set<StaffPermission>();
 
     public DbSet<Ticket> Tickets => Set<Ticket>();

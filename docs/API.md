@@ -170,6 +170,43 @@ All reports accept `?from=&to=&branchId=` (last 30 days by default).
 | Audit log | `GET /api/audit-logs?entityName=&entityId=&userId=&from=&to=` (Owner) |
 | Help center | `GET/POST /api/tickets` · `GET /api/tickets/{id}` · `POST /api/tickets/{id}/messages` · `POST /api/tickets/{id}/close` (owners and managers; admins answer) |
 
+## Offline work and sync (desktop app; Store)
+
+The desktop app keeps working with no internet and syncs later.
+
+| Method | Route | Notes |
+|---|---|---|
+| GET | `/api/sync/ping` | anonymous; 200 = the server is reachable (enable the Sync button) |
+| GET | `/api/sync/pull?since=` | data to keep on the device: `settings, branches, promotions, categories, products (with stock per warehouse), customers, suppliers (managers), warehouses, deleted {…ids}, serverTime, full`. Empty `since` = everything; otherwise send the last `serverTime` to get only changes and deletions |
+| POST | `/api/sync/push` | `{ deviceId?, operations: [...] }` (max 200, in the order they were done) |
+| GET | `/api/sync/operations` | every operation type, who may send it, and its body |
+
+Operation:
+```json
+{
+  "operationId": "9b2f…(new GUID)",
+  "type": "sales.invoice.create",
+  "clientKey": "sale-7f3a",
+  "targetId": null,
+  "payload": { "customerId": "@cust-12ab", "items": [ { "productId": 10, "quantity": 2, "unitPrice": 45 } ], "complete": true, "payment": { "method": 1, "tenderedAmount": 100 } },
+  "occurredAt": "2026-11-23T14:05:00Z"
+}
+```
+- `payload` is the same body as the online endpoint; `targetId` is the record of an update/delete/action.
+- A record created offline gets a `clientKey`; later operations (in this push or a later one) reference it as `"@clientKey"`
+  anywhere an id is expected. A line of an offline invoice is `"@saleKey#0"`, `"@saleKey#1"`… (line order) for returns.
+- Sending the same `operationId` again never applies it twice (`duplicate` returns the first result), so a push can be retried safely.
+- `sales.invoice.create` with `occurredAt` is an **offline sale**: it keeps the device's `unitPrice`s, the promotions running at that time
+  and its real time, and is never refused for stock (stock may go negative), credit limit or points — it already happened.
+- Result: `{ applied, duplicates, failed, results: [{ operationId, type, clientKey, status, statusCode, message, errors, entityType, id, code }], keyMap: { clientKey: id }, serverTime }`.
+  `status`: `applied`, `duplicate`, `failed` (fix or drop it; same operationId may be retried), `skipped` (it uses an `@key` whose creation failed).
+- Images are not synced; upload them when online.
+
+Types: `customers.create|update|delete|payment|adjust`, `suppliers.create|update|delete|payment|adjust`, `categories.*`, `products.*`,
+`warehouses.*`, `promotions.*` (create/update/delete), `branches.create|update|delete`, `employees.create|update|delete`, `settings.update`,
+`sales.invoice.create|update|complete|cancel|delete`, `sales.return.create`, `purchases.create|update|status|deliver|cancel|delete`,
+`inventory.adjust|transfer`. Each follows the same role rules as its online endpoint.
+
 ## Landing page (anonymous)
 `POST /api/merchant-applications` (`businessName, ownerName, phone, email?, city?, businessType?, branchesCount?, notes?`). The admins get a notification.
 

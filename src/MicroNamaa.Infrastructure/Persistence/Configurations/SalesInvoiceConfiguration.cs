@@ -44,6 +44,8 @@ public class SalesInvoiceConfiguration : IEntityTypeConfiguration<SalesInvoice>
 
         builder.Property(x => x.ReturnedAmount).HasPrecision(18, 3);
 
+        builder.Property(x => x.ClientKey).HasMaxLength(100);
+
         builder.Property(x => x.Note).HasMaxLength(500);
 
         builder.Property(x => x.CancelReason).HasMaxLength(500);
@@ -82,6 +84,11 @@ public class SalesInvoiceConfiguration : IEntityTypeConfiguration<SalesInvoice>
         builder.HasIndex(x => new { x.MerchantId, x.Number })
             .HasDatabaseName("UX_SalesInvoices_Number")
             .IsUnique();
+
+        builder.HasIndex(x => new { x.MerchantId, x.ClientKey })
+            .HasDatabaseName("UX_SalesInvoices_ClientKey")
+            .IsUnique()
+            .HasFilter("[ClientKey] IS NOT NULL");
 
         builder.HasIndex(x => new { x.MerchantId, x.Status, x.CompletedAt })
             .HasDatabaseName("IX_SalesInvoices_Status_Completed");

@@ -11,4 +11,7 @@ public interface IUnitOfWork
     Task CommitTransactionAsync(CancellationToken cancellationToken = default);
 
     Task RollbackTransactionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Forgets every tracked entity, so the next piece of work starts clean (used between sync operations).</summary>
+    void ClearChanges();
 }

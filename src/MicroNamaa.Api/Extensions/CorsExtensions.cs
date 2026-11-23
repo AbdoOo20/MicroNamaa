@@ -8,11 +8,27 @@ public static class CorsExtensions
     {
         var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 
+        // The desktop app (Electron/Tauri) calls from file://, app:// or tauri:// origins. Sign-in uses bearer tokens, not cookies.
+        var allowAnyOrigin = configuration.GetValue<bool>("Cors:AllowAnyOrigin");
+
         services.AddCors(options =>
         {
             options.AddPolicy(PolicyName, policy =>
             {
-                if (origins.Length > 0)
+                if (allowAnyOrigin)
+                {
+                    policy.SetIsOriginAllowed(_ => true)
+
+                        .AllowAnyHeader()
+
+                        .AllowAnyMethod()
+
+                        .AllowCredentials()
+
+                        .WithExposedHeaders("Content-Disposition");
+                }
+
+                else if (origins.Length > 0)
                 {
                     policy.WithOrigins(origins)
 
@@ -20,7 +36,9 @@ public static class CorsExtensions
 
                         .AllowAnyMethod()
 
-                        .AllowCredentials();
+                        .AllowCredentials()
+
+                        .WithExposedHeaders("Content-Disposition");
                 }
             });
         });

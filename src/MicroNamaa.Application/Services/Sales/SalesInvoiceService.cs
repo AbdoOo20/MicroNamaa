@@ -136,6 +136,8 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
 
     public Task<Result<SalesInvoiceDto>> CreateAsync(SaveSalesInvoiceRequest request, CancellationToken cancellationToken = default) => SaveAsync(null, request, cancellationToken);
 
+    public Task<Result<SalesInvoiceDto>> CreateOfflineAsync(SaveSalesInvoiceRequest request, OfflineSale offline, CancellationToken cancellationToken = default) => SaveAsync(null, request, cancellationToken, offline);
+
     public async Task<Result<SalesInvoiceDto>> UpdateAsync(long id, SaveSalesInvoiceRequest request, CancellationToken cancellationToken = default)
     {
         var invoice = await Visible().Where(item => item.Id == id).Select(item => new { item.Status, item.BranchId }).FirstOrDefaultAsync(cancellationToken);
@@ -355,14 +357,14 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
         return Result<FileDownload>.Ok(csv.ToDownload("sales-invoices"));
     }
 
-    private async Task<Result<SalesInvoiceDto>> SaveAsync(long? id, SaveSalesInvoiceRequest request, CancellationToken cancellationToken)
+    private async Task<Result<SalesInvoiceDto>> SaveAsync(long? id, SaveSalesInvoiceRequest request, CancellationToken cancellationToken, OfflineSale? offline = null)
     {
         if (request.Complete && request.Payment is null)
         {
             return Result<SalesInvoiceDto>.BadRequest("Choose how the customer pays.");
         }
 
-        var built = await BuildCartAsync(request, cancellationToken);
+        var built = await BuildCartAsync(request, cancellationToken, offline);
 
         if (!built.Succeeded)
         {
@@ -377,7 +379,7 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
 
         if (request.Complete)
         {
-            var checkedPayment = CheckPayment(request.Payment!, pricing.Total, cart.Customer);
+            var checkedPayment = CheckPayment(request.Payment!, pricing.Total, cart.Customer, offline is not null);
 
             if (!checkedPayment.Succeeded)
             {
@@ -413,6 +415,8 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
             {
                 invoice = new SalesInvoice
                 {
+                    ClientKey = offline?.ClientKey,
+
                     Number = await numbers.NextAsync(cart.Merchant.Id, DocumentType.SalesInvoice, cancellationToken),
 
                     CashierId = userAppService.RequiredUserId
@@ -427,7 +431,7 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
 
             if (payment is not null)
             {
-                var completed = await CompleteCoreAsync(invoice, cart, payment, cancellationToken);
+                var completed = await CompleteCoreAsync(invoice, cart, payment, offline, cancellationToken);
 
                 if (!completed.Succeeded)
                 {
@@ -458,19 +462,20 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
 
     private sealed record Payment(PaymentMethod Method, decimal Paid, decimal? Tendered, decimal Change, decimal Due);
 
-    private static Result<Payment> CheckPayment(InvoicePaymentRequest request, decimal total, Customer? customer)
+    /// <summary>An offline sale already happened in the shop, so its cash and credit limit are not checked again.</summary>
+    private static Result<Payment> CheckPayment(InvoicePaymentRequest request, decimal total, Customer? customer, bool offline)
     {
         switch (request.Method)
         {
             case PaymentMethod.Cash:
                 var tendered = request.TenderedAmount is { } given ? Money.Round(given) : (decimal?)null;
 
-                if (tendered < total)
+                if (tendered < total && !offline)
                 {
                     return Result<Payment>.BadRequest("The cash handed over is less than the total.");
                 }
 
-                return Result<Payment>.Ok(new Payment(PaymentMethod.Cash, total, tendered, tendered is null ? 0 : Money.Round(tendered.Value - total), 0));
+                return Result<Payment>.Ok(new Payment(PaymentMethod.Cash, total, tendered, tendered is null ? 0 : Money.Round(Math.Max(tendered.Value - total, 0)), 0));
 
             case PaymentMethod.Card or PaymentMethod.BankTransfer:
                 return Result<Payment>.Ok(new Payment(request.Method, total, null, 0, 0));
@@ -490,7 +495,7 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
 
                 var due = Money.Round(total - paid);
 
-                if (customer.CreditLimit is { } limit && customer.Balance + due > limit)
+                if (!offline && customer.CreditLimit is { } limit && customer.Balance + due > limit)
                 {
                     return Result<Payment>.Conflict($"This sale takes the customer over their credit limit of {limit:0.###} LYD (they owe {customer.Balance:0.###} LYD).");
                 }
@@ -502,11 +507,12 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
         }
     }
 
-    private async Task<Result> CompleteCoreAsync(SalesInvoice invoice, Cart cart, Payment payment, CancellationToken cancellationToken)
+    private async Task<Result> CompleteCoreAsync(SalesInvoice invoice, Cart cart, Payment payment, OfflineSale? offline, CancellationToken cancellationToken)
     {
         var changes = invoice.Items.Select(item => new StockChange(invoice.WarehouseId, item.ProductId, -item.Quantity, StockMovementType.Sale, item.UnitCost, RelatedTypes.SalesInvoice, invoice.Id, invoice.Code)).ToList();
 
-        var stocked = await stockLedger.ApplyAsync(changes, cart.Merchant.AllowNegativeStock, cancellationToken);
+        // An offline sale is never refused for stock: the goods already left the shop.
+        var stocked = await stockLedger.ApplyAsync(changes, cart.Merchant.AllowNegativeStock || offline is not null, cancellationToken);
 
         if (!stocked.Succeeded)
         {
@@ -525,18 +531,18 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
 
         invoice.Status = SalesInvoiceStatus.Completed;
 
-        invoice.CompletedAt = DateTime.UtcNow;
+        invoice.CompletedAt = offline?.At ?? DateTime.UtcNow;
 
         if (cart.Customer is { } snapshot)
         {
             var customer = await unitOfWork.Repository<Customer>().Query(asNoTracking: false).FirstAsync(item => item.Id == snapshot.Id, cancellationToken);
 
-            if (invoice.PointsRedeemed > customer.LoyaltyPoints)
+            if (invoice.PointsRedeemed > customer.LoyaltyPoints && offline is null)
             {
                 return Result.Conflict("The customer no longer has enough points.");
             }
 
-            customer.LoyaltyPoints += invoice.PointsEarned - invoice.PointsRedeemed;
+            customer.LoyaltyPoints = Math.Max(0, customer.LoyaltyPoints + invoice.PointsEarned - invoice.PointsRedeemed);
 
             if (payment.Due > 0)
             {
@@ -618,7 +624,7 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
         }
     }
 
-    private async Task<Result<Cart>> BuildCartAsync(SaveSalesInvoiceRequest request, CancellationToken cancellationToken)
+    private async Task<Result<Cart>> BuildCartAsync(SaveSalesInvoiceRequest request, CancellationToken cancellationToken, OfflineSale? offline = null)
     {
         var branch = await context.ResolveBranchAsync(request.BranchId, cancellationToken);
 
@@ -652,7 +658,16 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
             return Result<Cart>.NotFound($"Product {missing.ProductId} was not found.");
         }
 
-        if (products.Values.FirstOrDefault(product => product.Status != RecordStatus.Active) is { } inactive)
+        if (offline is not null)
+        {
+            // Sold offline at the price the customer paid (the products are read without tracking, so nothing is saved).
+            foreach (var item in request.Items.Where(item => item.UnitPrice is not null))
+            {
+                products[item.ProductId].Price = Money.Round(item.UnitPrice!.Value);
+            }
+        }
+
+        else if (products.Values.FirstOrDefault(product => product.Status != RecordStatus.Active) is { } inactive)
         {
             return Result<Cart>.Conflict($"\"{inactive.Name}\" is not for sale (draft or archived).");
         }
@@ -678,7 +693,8 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
             }
         }
 
-        var now = DateTime.UtcNow;
+        // Offline sales use the promotions that were running when the sale was made.
+        var now = offline?.At ?? DateTime.UtcNow;
 
         var itemPromotions = await unitOfWork.Repository<Promotion>().Query()
             .Where(promotion => promotion.Scope != PromotionScope.Order)
@@ -714,12 +730,12 @@ public class SalesInvoiceService(IUnitOfWork unitOfWork, MerchantContext context
                 return Result<Cart>.BadRequest("Choose the customer whose points are used.");
             }
 
-            if (request.PointsToRedeem > customer.LoyaltyPoints)
+            if (request.PointsToRedeem > customer.LoyaltyPoints && offline is null)
             {
                 return Result<Cart>.BadRequest($"The customer has only {customer.LoyaltyPoints} points.");
             }
 
-            if (request.PointsToRedeem < merchant.MinPointsToRedeem)
+            if (request.PointsToRedeem < merchant.MinPointsToRedeem && offline is null)
             {
                 return Result<Cart>.BadRequest($"At least {merchant.MinPointsToRedeem} points must be used at once.");
             }

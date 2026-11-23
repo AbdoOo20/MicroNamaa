@@ -20,6 +20,12 @@ public interface ISalesInvoiceService
     /// <summary>Saves a new invoice as a draft, or completes it at once.</summary>
     Task<Result<SalesInvoiceDto>> CreateAsync(SaveSalesInvoiceRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Records a sale made while the device was offline (from the sync push). It keeps the prices the customer paid,
+    /// the promotions running at that time and its real time, and is not refused for stock, credit limit or points.
+    /// </summary>
+    Task<Result<SalesInvoiceDto>> CreateOfflineAsync(SaveSalesInvoiceRequest request, OfflineSale offline, CancellationToken cancellationToken = default);
+
     /// <summary>Changes a draft (and completes it when asked).</summary>
     Task<Result<SalesInvoiceDto>> UpdateAsync(long id, SaveSalesInvoiceRequest request, CancellationToken cancellationToken = default);
 

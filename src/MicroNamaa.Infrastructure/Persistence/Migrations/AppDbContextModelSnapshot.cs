@@ -1199,6 +1199,10 @@ namespace MicroNamaa.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 3)
                         .HasColumnType("decimal(18,3)");
 
+                    b.Property<string>("ClientKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime2");
 
@@ -1336,6 +1340,11 @@ namespace MicroNamaa.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CustomerId", "Status")
                         .HasDatabaseName("IX_SalesInvoices_Customer");
+
+                    b.HasIndex("MerchantId", "ClientKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SalesInvoices_ClientKey")
+                        .HasFilter("[ClientKey] IS NOT NULL");
 
                     b.HasIndex("MerchantId", "Number")
                         .IsUnique()
@@ -1934,6 +1943,82 @@ namespace MicroNamaa.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_SupplierBalanceEntries_Supplier");
 
                     b.ToTable("SupplierBalanceEntries", (string)null);
+                });
+
+            modelBuilder.Entity("MicroNamaa.Domain.Entities.SyncOperation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ClientKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("EntityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("EntityType")
+                        .HasMaxLength(40)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MerchantId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("OccurredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MerchantId", "ClientKey")
+                        .HasDatabaseName("IX_SyncOperations_ClientKey")
+                        .HasFilter("[ClientKey] IS NOT NULL");
+
+                    b.HasIndex("MerchantId", "OperationId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SyncOperations_Operation");
+
+                    b.ToTable("SyncOperations", (string)null);
                 });
 
             modelBuilder.Entity("MicroNamaa.Domain.Entities.Ticket", b =>
@@ -2681,6 +2766,15 @@ namespace MicroNamaa.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("MicroNamaa.Domain.Entities.SyncOperation", b =>
+                {
+                    b.HasOne("MicroNamaa.Domain.Entities.Merchant", null)
+                        .WithMany()
+                        .HasForeignKey("MerchantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MicroNamaa.Domain.Entities.Ticket", b =>

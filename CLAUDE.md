@@ -22,6 +22,8 @@ Read `docs/Architecture.md` (how it works) and `docs/API.md` (endpoints) first.
   Drafts do not touch stock, balances or points; completing does; cancelling a completed invoice puts everything back.
 - Products, warehouses, suppliers and employees with history are archived or turned off, never deleted (their documents must keep showing).
 - Document numbers (INV, PO, RET, customer and supplier codes) come from `IDocumentNumberService`, per merchant.
+- Offline sync (`SyncService`) runs every pushed operation through the same service as its online endpoint; a new store
+  operation that should work offline must be added to `SyncOperations`. Offline sales go through `CreateOfflineAsync` only.
 - Notifications are created with `NotificationFactory` and pushed over SignalR by the DbContext after saving.
 
 ## Code conventions

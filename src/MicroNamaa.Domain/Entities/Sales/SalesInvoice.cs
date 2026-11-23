@@ -14,6 +14,9 @@ public class SalesInvoice : BaseEntity<long>, IMerchantOwned, ISearchable
 
     public long Number { get; set; }
 
+    /// <summary>The device's key for a sale made offline (printed on the offline receipt), to find it after the sync.</summary>
+    public string? ClientKey { get; set; }
+
     public int BranchId { get; set; }
 
     public int? RegisterId { get; set; }

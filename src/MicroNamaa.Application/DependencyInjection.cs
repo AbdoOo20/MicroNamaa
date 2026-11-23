@@ -34,6 +34,8 @@ using MicroNamaa.Application.Services.Staff;
 
 using MicroNamaa.Application.Services.Support;
 
+using MicroNamaa.Application.Services.Sync;
+
 namespace MicroNamaa.Application;
 
 public static class DependencyInjection
@@ -85,6 +87,8 @@ public static class DependencyInjection
         services.AddScoped<IMerchantApplicationService, MerchantApplicationService>();
 
         services.AddScoped<IImageService, ImageService>();
+
+        services.AddScoped<ISyncService, SyncService>();
 
         services.AddScoped<ITicketService, TicketService>();
 

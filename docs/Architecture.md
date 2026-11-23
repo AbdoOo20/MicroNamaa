@@ -153,6 +153,19 @@ units, tax left out), and the supplier's balance gets the total minus what was p
 - `AppDbContext.SaveChangesAsync` pushes every new notification over SignalR after the save succeeds.
 - Hub: `/hubs/notifications?access_token=<jwt>`, event `notification`. Groups: `user:{id}`, `merchant:{id}` (owners and managers), `admins`.
 
+## Offline sync (desktop app)
+
+- The device pulls the store's data (`/api/sync/pull`, then only changes with `since`) and works on it offline.
+- What it does offline is queued as operations and pushed later (`/api/sync/push`). `SyncService` runs each one through the
+  same service as its online endpoint (`SyncOperations` maps type → service call and role), so every rule still applies.
+- `SyncOperation` rows remember applied operations: the same `OperationId` is never applied twice, and `ClientKey` → server id
+  lets later operations reference offline-created records as `"@key"` (`"@key#n"` = line n of an offline invoice).
+- Each operation succeeds or fails alone; the change tracker is cleared between operations.
+- An offline sale (`sales.invoice.create` with `occurredAt`) goes through `SalesInvoiceService.CreateOfflineAsync`: the device's
+  prices, the promotions of that moment, `CompletedAt` = when it happened, and no refusal for stock, credit limit or points.
+  `SalesInvoice.ClientKey` keeps the device's key (unique per merchant).
+- CORS: `Cors:AllowAnyOrigin` lets the desktop app call from `file://`, `app://` or `tauri://` origins (bearer tokens, no cookies).
+
 ## Background worker
 
 `MaintenanceWorker` runs `MaintenanceService` every 5 minutes: reminds a merchant (and the admins) once,
